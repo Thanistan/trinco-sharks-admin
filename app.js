@@ -1,5 +1,5 @@
 // =====================================================
-//   TRINCO SHARKS RESTAURANT — Shared Data & Utilities
+//   SAVORIA RESTAURANT — Shared Data & Utilities
 // =====================================================
 
 // --- Default Menu Data (used if localStorage is empty) ---
@@ -354,9 +354,10 @@ function footerHTML() {
         <div>
           <h4>Contact</h4>
           <ul>
-            <li><a href="#">📍 374 Thirugnana sampanthar street, Trincomalee 31000</a></li>
-            <li><a href="#">📞 0719920613 </a></li>
-            <li><a href="#">⏰ 10am – 10pm Daily</a></li>
+            <li><a href="#">📍 123 Gourmet Ave, NY</a></li>
+            <li><a href="#">📞 +1 (555) 123-4567</a></li>
+            <li><a href="#">✉️ hello@savoria.com</a></li>
+            <li><a href="#">⏰ 11am – 11pm Daily</a></li>
           </ul>
         </div>
       </div>

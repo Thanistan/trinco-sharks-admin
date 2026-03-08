@@ -129,14 +129,35 @@
 </div>
 
 <script src="js/app.js"></script>
-<script>
-  if (sessionStorage.getItem('sav_admin_auth') !== 'true') window.location.href = 'admin-login.html';
-  function adminLogout() { sessionStorage.removeItem('sav_admin_auth'); window.location.href = 'admin-login.html'; }
-  function toggleSidebar() { document.getElementById('adminSidebar').classList.toggle('open'); }
+<script type="module">
+  import { db, collection, doc, updateDoc, onSnapshot, addDoc, query, orderBy } from './js/firebase-config.js';
 
+  if (sessionStorage.getItem('sav_admin_auth') !== 'true') window.location.href = 'admin-login.html';
+  window.adminLogout = function() { sessionStorage.removeItem('sav_admin_auth'); window.location.href = 'admin-login.html'; }
+  window.toggleSidebar = function() { document.getElementById('adminSidebar').classList.toggle('open'); }
+
+  // ✅ Firebase-இல் இருந்து real-time orders
+  let allOrders = [];
   let activeStatus = 'All';
 
-  function filterByStatus(status, btn) {
+  // Real-time listener — customer order போட்டவுடனே admin-க்கு வரும்!
+  const ordersRef = collection(db, 'orders');
+  const ordersQuery = query(ordersRef, orderBy('createdAt', 'desc'));
+
+  onSnapshot(ordersQuery, (snapshot) => {
+    allOrders = snapshot.docs.map(d => ({ _docId: d.id, ...d.data() }));
+    updateStats();
+    renderOrders();
+    // புதுசா order வந்தா notification காட்டு
+    snapshot.docChanges().forEach(change => {
+      if (change.type === 'added' && allOrders.length > 1) {
+        const o = change.doc.data();
+        showToast(`🔔 New Order! ${o.id} — ${o.customer?.name || ''}`);
+      }
+    });
+  });
+
+  window.filterByStatus = function(status, btn) {
     activeStatus = status;
     document.querySelectorAll('#statusFilters .filter-chip').forEach(c => c.classList.remove('active'));
     btn.classList.add('active');
@@ -144,7 +165,7 @@
   }
 
   function getFilteredOrders() {
-    let orders = DB.getOrders();
+    let orders = [...allOrders];
     const q = document.getElementById('orderSearch').value.trim().toLowerCase();
     if (activeStatus !== 'All') orders = orders.filter(o => o.status === activeStatus);
     if (q) orders = orders.filter(o => o.id.toLowerCase().includes(q) || (o.customer?.name || '').toLowerCase().includes(q));
@@ -152,7 +173,7 @@
   }
 
   function updateStats() {
-    const all = DB.getOrders();
+    const all = allOrders;
     const pending   = all.filter(o => o.status === 'Pending').length;
     const preparing = all.filter(o => o.status === 'Preparing').length;
     const completed = all.filter(o => o.status === 'Completed').length;
@@ -164,7 +185,6 @@
       <div class="strip-card"><div class="strip-icon" style="background:rgba(34,197,94,0.1);">✅</div><div class="strip-info"><strong>${completed}</strong><span>Completed</span></div></div>`;
   }
 
-  const statusColors = { Pending:'badge-amber', Preparing:'badge-blue', Ready:'badge-blue', Completed:'badge-green', Cancelled:'badge-red' };
   const pmLabels = { card:'💳 Card', paypal:'🅿 PayPal', cash:'💵 Cash' };
 
   function renderOrders() {
@@ -172,7 +192,7 @@
     document.getElementById('orderCount').textContent = `(${orders.length})`;
     const tbody = document.getElementById('ordersTableBody');
     if (!orders.length) {
-      tbody.innerHTML = `<tr><td colspan="9"><div class="empty-orders"><div class="empty-icon">📭</div><p>No orders found.</p><p style="margin-top:8px;font-size:0.85rem;">Click "Add Demo Orders" to generate sample data.</p></div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9"><div class="empty-orders"><div class="empty-icon">📭</div><p>No orders yet.</p><p style="margin-top:8px;font-size:0.85rem;color:var(--text-muted);">Customer orders will appear here instantly 🔥</p></div></td></tr>`;
       return;
     }
     tbody.innerHTML = orders.map(o => `
@@ -187,25 +207,30 @@
         <td><strong>$${(o.total||0).toFixed(2)}</strong></td>
         <td style="font-size:0.85rem;">${pmLabels[o.paymentMethod]||o.paymentMethod||'—'}</td>
         <td>
-          <select class="status-select" onchange="updateStatus('${o.id}', this.value)">
+          <select class="status-select" onchange="updateStatus('${o._docId}', '${o.id}', this.value)">
             ${['Pending','Preparing','Ready','Completed','Cancelled'].map(s => `<option ${o.status===s?'selected':''}>${s}</option>`).join('')}
           </select>
         </td>
         <td style="color:var(--text-muted);font-size:0.82rem;white-space:nowrap;">${new Date(o.date).toLocaleString()}</td>
         <td>
-          <button class="action-btn action-edit" onclick="viewOrder('${o.id}')">👁 View</button>
+          <button class="action-btn action-edit" onclick="viewOrder('${o._docId}')">👁 View</button>
         </td>
       </tr>`).join('');
   }
 
-  function updateStatus(orderId, newStatus) {
-    const orders = DB.getOrders();
-    const o = orders.find(x => x.id === orderId);
-    if (o) { o.status = newStatus; DB.saveOrders(orders); showToast(`✅ Order ${orderId} → ${newStatus}`); updateStats(); }
+  // ✅ Firebase-ல் status update
+  window.updateStatus = async function(docId, orderId, newStatus) {
+    try {
+      await updateDoc(doc(db, 'orders', docId), { status: newStatus });
+      showToast(`✅ ${orderId} → ${newStatus}`);
+    } catch(e) {
+      console.error(e);
+      showToast('❌ Update failed');
+    }
   }
 
-  function viewOrder(orderId) {
-    const o = DB.getOrders().find(x => x.id === orderId);
+  window.viewOrder = function(docId) {
+    const o = allOrders.find(x => x._docId === docId);
     if (!o) return;
     document.getElementById('orderModalTitle').textContent = `Order ${o.id}`;
     document.getElementById('orderModalContent').innerHTML = `
@@ -236,43 +261,42 @@
       </div>
       <div style="margin-top:16px;">
         <label class="admin-form-label">Update Status</label>
-        <select class="admin-form-input" id="modalStatusSelect" onchange="updateStatus('${o.id}',this.value); closeOrderModal();">
+        <select class="admin-form-input" onchange="updateStatus('${o._docId}','${o.id}',this.value); closeOrderModal();">
           ${['Pending','Preparing','Ready','Completed','Cancelled'].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}
         </select>
       </div>`;
     document.getElementById('orderModal').classList.add('open');
   }
 
-  function closeOrderModal() { document.getElementById('orderModal').classList.remove('open'); }
+  window.closeOrderModal = function() { document.getElementById('orderModal').classList.remove('open'); }
   document.getElementById('orderModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeOrderModal(); });
 
-  // Add realistic demo orders
-  function addDemoOrders() {
-    const menu = DB.getMenu();
-    const names = ['Sarah Mitchell','James Rodriguez','Aisha Thompson','Wei Chen','Carlos Mendez','Emma Wilson','Arjun Patel'];
-    const statuses = ['Pending','Preparing','Completed','Completed','Pending','Ready','Completed'];
-    const methods = ['card','paypal','cash','card','cash','paypal','card'];
+  // Search
+  document.getElementById('orderSearch').addEventListener('input', renderOrders);
 
-    const orders = names.map((name, i) => {
-      const items = [menu[i % menu.length], menu[(i+2) % menu.length]].map(item => ({...item, qty: Math.floor(Math.random()*2)+1}));
+  // ✅ Demo orders — Firebase-லயே save ஆகும்
+  window.addDemoOrders = async function() {
+    const menu = DB.getMenu();
+    const names = ['Sarah Mitchell','James Rodriguez','Aisha Thompson','Wei Chen','Carlos Mendez'];
+    const statuses = ['Pending','Preparing','Completed','Pending','Ready'];
+    const methods = ['card','paypal','cash','card','cash'];
+    for (let i = 0; i < names.length; i++) {
+      const items = [menu[i % menu.length], menu[(i+2) % menu.length]].map(item => ({
+        id: item.id, name: item.name, price: item.price,
+        qty: Math.floor(Math.random()*2)+1, image: item.image, category: item.category
+      }));
       const subtotal = items.reduce((s,it) => s + it.price * it.qty, 0);
       const total = subtotal + 3.99 + subtotal * 0.08;
-      return {
+      await addDoc(collection(db, 'orders'), {
         id: 'ORD-' + (Date.now() - i * 100000),
         date: new Date(Date.now() - i * 3600000 * 4).toISOString(),
-        customer: { name, phone: '+1 (555) ' + (100+i*111), email: name.toLowerCase().replace(' ','.') + '@email.com', address: (100+i*10) + ' Main St, New York, NY', notes: '' },
+        createdAt: new Date(Date.now() - i * 3600000 * 4),
+        customer: { name: names[i], phone: '+1 (555) ' + (100+i*111), email: names[i].toLowerCase().replace(' ','.') + '@email.com', address: (100+i*10) + ' Main St, New York, NY', notes: '' },
         items, total, paymentMethod: methods[i], status: statuses[i]
-      };
-    });
-
-    const existing = DB.getOrders();
-    DB.saveOrders([...orders, ...existing]);
-    showToast('✅ Demo orders added!');
-    updateStats(); renderOrders();
+      });
+    }
+    showToast('✅ Demo orders added to Firebase!');
   }
-
-  updateStats();
-  renderOrders();
 </script>
 </body>
 </html>

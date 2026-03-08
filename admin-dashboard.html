@@ -101,134 +101,123 @@
 </div>
 
 <script src="js/app.js"></script>
-<script>
-  // Guard: require login
+<script type="module">
+  import { db, collection, onSnapshot, query, orderBy } from './js/firebase-config.js';
+
   if (sessionStorage.getItem('sav_admin_auth') !== 'true') window.location.href = 'admin-login.html';
+  window.adminLogout = function() { sessionStorage.removeItem('sav_admin_auth'); window.location.href = 'admin-login.html'; }
+  window.toggleSidebar = function() { document.getElementById('adminSidebar').classList.toggle('open'); }
 
-  function adminLogout() { sessionStorage.removeItem('sav_admin_auth'); window.location.href = 'admin-login.html'; }
-  function toggleSidebar() { document.getElementById('adminSidebar').classList.toggle('open'); }
-
-  // ---- Build dashboard ----
-  const orders = DB.getOrders();
   const menu = DB.getMenu();
-
-  // Pending count
-  const pendingCount = orders.filter(o => o.status === 'Pending').length;
-  document.getElementById('pendingBadge').textContent = pendingCount;
-
-  // Stat cards
-  const totalRevenue = orders.reduce((s, o) => s + (o.total || 0), 0);
-  const totalOrders = orders.length;
-  const avgOrder = totalOrders ? totalRevenue / totalOrders : 0;
-
-  document.getElementById('statCards').innerHTML = `
-    <div class="stat-card">
-      <div class="stat-card-icon" style="background:rgba(244,169,42,0.1);">💰</div>
-      <div class="stat-card-value">$${totalRevenue.toFixed(2)}</div>
-      <div class="stat-card-label">Total Revenue</div>
-      <div class="stat-card-change change-up">↑ 12% from last week</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-card-icon" style="background:rgba(59,130,246,0.1);">🧾</div>
-      <div class="stat-card-value">${totalOrders}</div>
-      <div class="stat-card-label">Total Orders</div>
-      <div class="stat-card-change change-up">↑ 8 new today</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-card-icon" style="background:rgba(34,197,94,0.1);">🍽</div>
-      <div class="stat-card-value">${menu.length}</div>
-      <div class="stat-card-label">Menu Items</div>
-      <div class="stat-card-change" style="color:var(--text-muted);">Across 4 categories</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-card-icon" style="background:rgba(239,68,68,0.1);">📦</div>
-      <div class="stat-card-value">${pendingCount}</div>
-      <div class="stat-card-label">Pending Orders</div>
-      <div class="stat-card-change ${pendingCount > 0 ? 'change-down' : 'change-up'}">${pendingCount > 0 ? '⚠ Need attention' : '✓ All clear'}</div>
-    </div>`;
-
-  // Category stats
   const cats = ['Burger','Pizza','Rice','Drinks'];
-  const catRevenue = {};
-  cats.forEach(c => catRevenue[c] = 0);
-  orders.forEach(o => {
-    (o.items || []).forEach(i => {
-      if (catRevenue[i.category] !== undefined) catRevenue[i.category] += i.price * i.qty;
-    });
-  });
-  const maxCat = Math.max(...Object.values(catRevenue), 1);
   const catColors = { Burger: '#F97316', Pizza: '#EF4444', Rice: '#EAB308', Drinks: '#06B6D4' };
-  document.getElementById('categoryStats').innerHTML = cats.map(c => `
-    <div style="margin-bottom:20px;">
-      <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:6px;">
-        <span>${c}</span><strong>$${catRevenue[c].toFixed(2)}</strong>
-      </div>
-      <div style="background:var(--border);height:8px;border-radius:50px;overflow:hidden;">
-        <div style="width:${(catRevenue[c]/maxCat*100).toFixed(0)}%;height:100%;background:${catColors[c]||'var(--amber)'};border-radius:50px;transition:width 1s ease;"></div>
-      </div>
-    </div>`).join('');
-
-  // Recent orders table
   const statusColors = { Pending:'badge-amber', Preparing:'badge-blue', Completed:'badge-green', Cancelled:'badge-red' };
-  const recentOrders = orders.slice(0, 8);
-  document.getElementById('recentOrdersBody').innerHTML = recentOrders.length ? recentOrders.map(o => `
-    <tr>
-      <td><code style="font-size:0.8rem;color:var(--amber)">${o.id}</code></td>
-      <td><strong>${o.customer?.name || '—'}</strong></td>
-      <td>${(o.items||[]).length} item(s)</td>
-      <td><strong>$${(o.total||0).toFixed(2)}</strong></td>
-      <td><span class="badge ${statusColors[o.status]||'badge-amber'}">${o.status||'Pending'}</span></td>
-      <td style="color:var(--text-muted);font-size:0.85rem;">${new Date(o.date).toLocaleDateString()}</td>
-    </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">No orders yet. Share your menu link!</td></tr>';
 
-  // Simple bar chart (pure canvas)
+  // ✅ Firebase real-time dashboard updates
+  const ordersQuery = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+
+  onSnapshot(ordersQuery, (snapshot) => {
+    const orders = snapshot.docs.map(d => d.data());
+
+    const pendingCount = orders.filter(o => o.status === 'Pending').length;
+    document.getElementById('pendingBadge').textContent = pendingCount;
+
+    const totalRevenue = orders.reduce((s, o) => s + (o.total || 0), 0);
+    const totalOrders = orders.length;
+
+    document.getElementById('statCards').innerHTML = `
+      <div class="stat-card">
+        <div class="stat-card-icon" style="background:rgba(244,169,42,0.1);">💰</div>
+        <div class="stat-card-value">$${totalRevenue.toFixed(2)}</div>
+        <div class="stat-card-label">Total Revenue</div>
+        <div class="stat-card-change change-up">↑ Live from Firebase</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon" style="background:rgba(59,130,246,0.1);">🧾</div>
+        <div class="stat-card-value">${totalOrders}</div>
+        <div class="stat-card-label">Total Orders</div>
+        <div class="stat-card-change change-up">🔥 Real-time</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon" style="background:rgba(34,197,94,0.1);">🍽</div>
+        <div class="stat-card-value">${menu.length}</div>
+        <div class="stat-card-label">Menu Items</div>
+        <div class="stat-card-change" style="color:var(--text-muted);">Across 4 categories</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon" style="background:rgba(239,68,68,0.1);">📦</div>
+        <div class="stat-card-value">${pendingCount}</div>
+        <div class="stat-card-label">Pending Orders</div>
+        <div class="stat-card-change ${pendingCount > 0 ? 'change-down' : 'change-up'}">${pendingCount > 0 ? '⚠ Need attention' : '✓ All clear'}</div>
+      </div>`;
+
+    // Category revenue
+    const catRevenue = {};
+    cats.forEach(c => catRevenue[c] = 0);
+    orders.forEach(o => {
+      (o.items || []).forEach(i => {
+        if (catRevenue[i.category] !== undefined) catRevenue[i.category] += i.price * i.qty;
+      });
+    });
+    const maxCat = Math.max(...Object.values(catRevenue), 1);
+    document.getElementById('categoryStats').innerHTML = cats.map(c => `
+      <div style="margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:6px;">
+          <span>${c}</span><strong>$${catRevenue[c].toFixed(2)}</strong>
+        </div>
+        <div style="background:var(--border);height:8px;border-radius:50px;overflow:hidden;">
+          <div style="width:${(catRevenue[c]/maxCat*100).toFixed(0)}%;height:100%;background:${catColors[c]||'var(--amber)'};border-radius:50px;transition:width 1s ease;"></div>
+        </div>
+      </div>`).join('');
+
+    // Recent orders
+    const recentOrders = orders.slice(0, 8);
+    document.getElementById('recentOrdersBody').innerHTML = recentOrders.length ? recentOrders.map(o => `
+      <tr>
+        <td><code style="font-size:0.8rem;color:var(--amber)">${o.id}</code></td>
+        <td><strong>${o.customer?.name || '—'}</strong></td>
+        <td>${(o.items||[]).length} item(s)</td>
+        <td><strong>$${(o.total||0).toFixed(2)}</strong></td>
+        <td><span class="badge ${statusColors[o.status]||'badge-amber'}">${o.status||'Pending'}</span></td>
+        <td style="color:var(--text-muted);font-size:0.85rem;">${new Date(o.date).toLocaleDateString()}</td>
+      </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">No orders yet. Share your menu link!</td></tr>';
+  });
+
   function drawChart() {
     const canvas = document.getElementById('salesChart');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const W = canvas.offsetWidth; const H = 200;
     canvas.width = W; canvas.height = H;
-
     const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    const vals = [145, 220, 180, 310, 270, 390, 260]; // demo data
+    const vals = [145, 220, 180, 310, 270, 390, 260];
     const maxV = Math.max(...vals);
     const barW = (W - 80) / days.length;
     const padX = 40; const padY = 20; const plotH = H - padY * 2 - 30;
-
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
     const textColor = isDark ? '#888' : '#999';
-
-    // Grid
     for (let i = 0; i <= 4; i++) {
       const y = padY + (plotH / 4) * i;
-      ctx.strokeStyle = gridColor;
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = gridColor; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(W - padX, y); ctx.stroke();
       ctx.fillStyle = textColor; ctx.font = '10px DM Sans,sans-serif'; ctx.textAlign = 'right';
       ctx.fillText('$' + Math.round(maxV * (4-i)/4), padX - 6, y + 4);
     }
-
-    // Bars
     days.forEach((day, i) => {
       const bH = (vals[i] / maxV) * plotH;
       const x = padX + i * barW + barW * 0.2;
       const bWidth = barW * 0.6;
       const y = padY + plotH - bH;
-
       const grad = ctx.createLinearGradient(0, y, 0, y + bH);
       grad.addColorStop(0, '#F4A92A');
       grad.addColorStop(1, 'rgba(244,169,42,0.3)');
       ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.roundRect(x, y, bWidth, bH, [4, 4, 0, 0]);
-      ctx.fill();
-
+      ctx.beginPath(); ctx.roundRect(x, y, bWidth, bH, [4, 4, 0, 0]); ctx.fill();
       ctx.fillStyle = textColor; ctx.textAlign = 'center'; ctx.font = '11px DM Sans,sans-serif';
       ctx.fillText(day, x + bWidth/2, H - 6);
     });
   }
-
   setTimeout(drawChart, 100);
   window.addEventListener('resize', drawChart);
 </script>
