@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — Savoria Admin</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+<div class="admin-layout">
+
+  <!-- Sidebar -->
+  <aside class="admin-sidebar" id="adminSidebar">
+    <div class="sidebar-brand">
+      <div class="logo">Sav<span>oria</span></div>
+      <div class="role">Admin Panel</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section-label">Main</div>
+      <a href="admin-dashboard.html" class="active"><span class="nav-icon">📊</span> Dashboard</a>
+      <a href="admin-food.html"><span class="nav-icon">🍽</span> Food Items</a>
+      <a href="admin-orders.html"><span class="nav-icon">🧾</span> Orders <span class="badge" id="pendingBadge">0</span></a>
+      <div class="sidebar-section-label">Settings</div>
+      <a href="index.html" target="_blank"><span class="nav-icon">🌐</span> View Website</a>
+      <a href="#" onclick="toggleTheme()"><span class="nav-icon">🌙</span> Toggle Theme</a>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="logout-btn" onclick="adminLogout()"><span>🚪</span> Logout</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="admin-main">
+    <!-- Topbar -->
+    <div class="admin-topbar">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+        <div class="admin-topbar-left">
+          <div class="page-title">Dashboard</div>
+          <div class="page-breadcrumb">Admin / Overview</div>
+        </div>
+      </div>
+      <div class="admin-topbar-right">
+        <button class="theme-toggle" title="Toggle theme">🌙</button>
+        <div class="admin-avatar">A</div>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="admin-content">
+      <!-- Stats -->
+      <div class="stat-cards" id="statCards">
+        <!-- Injected by JS -->
+      </div>
+
+      <!-- Charts + Recent Orders -->
+      <div style="display:grid;grid-template-columns:1fr 380px;gap:24px;margin-bottom:24px;" id="dashboardGrid">
+        <!-- Sales chart -->
+        <div class="data-table-wrap">
+          <div class="table-header">
+            <h3>📈 Sales This Week</h3>
+            <span style="font-size:0.85rem;color:var(--text-muted);">Last 7 days</span>
+          </div>
+          <div style="padding:24px;">
+            <canvas id="salesChart" height="200"></canvas>
+          </div>
+        </div>
+
+        <!-- Category breakdown -->
+        <div class="data-table-wrap">
+          <div class="table-header"><h3>🍔 Sales by Category</h3></div>
+          <div style="padding:24px;" id="categoryStats"><!-- JS --></div>
+        </div>
+      </div>
+
+      <!-- Recent Orders -->
+      <div class="data-table-wrap">
+        <div class="table-header">
+          <h3>🧾 Recent Orders</h3>
+          <a href="admin-orders.html" class="btn btn-outline" style="padding:8px 18px;font-size:0.85rem;">View All</a>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Order ID</th>
+                <th>Customer</th>
+                <th>Items</th>
+                <th>Total</th>
+                <th>Status</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody id="recentOrdersBody"><!-- JS --></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  // Guard: require login
+  if (sessionStorage.getItem('sav_admin_auth') !== 'true') window.location.href = 'admin-login.html';
+
+  function adminLogout() { sessionStorage.removeItem('sav_admin_auth'); window.location.href = 'admin-login.html'; }
+  function toggleSidebar() { document.getElementById('adminSidebar').classList.toggle('open'); }
+
+  // ---- Build dashboard ----
+  const orders = DB.getOrders();
+  const menu = DB.getMenu();
+
+  // Pending count
+  const pendingCount = orders.filter(o => o.status === 'Pending').length;
+  document.getElementById('pendingBadge').textContent = pendingCount;
+
+  // Stat cards
+  const totalRevenue = orders.reduce((s, o) => s + (o.total || 0), 0);
+  const totalOrders = orders.length;
+  const avgOrder = totalOrders ? totalRevenue / totalOrders : 0;
+
+  document.getElementById('statCards').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-card-icon" style="background:rgba(244,169,42,0.1);">💰</div>
+      <div class="stat-card-value">$${totalRevenue.toFixed(2)}</div>
+      <div class="stat-card-label">Total Revenue</div>
+      <div class="stat-card-change change-up">↑ 12% from last week</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon" style="background:rgba(59,130,246,0.1);">🧾</div>
+      <div class="stat-card-value">${totalOrders}</div>
+      <div class="stat-card-label">Total Orders</div>
+      <div class="stat-card-change change-up">↑ 8 new today</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon" style="background:rgba(34,197,94,0.1);">🍽</div>
+      <div class="stat-card-value">${menu.length}</div>
+      <div class="stat-card-label">Menu Items</div>
+      <div class="stat-card-change" style="color:var(--text-muted);">Across 4 categories</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-icon" style="background:rgba(239,68,68,0.1);">📦</div>
+      <div class="stat-card-value">${pendingCount}</div>
+      <div class="stat-card-label">Pending Orders</div>
+      <div class="stat-card-change ${pendingCount > 0 ? 'change-down' : 'change-up'}">${pendingCount > 0 ? '⚠ Need attention' : '✓ All clear'}</div>
+    </div>`;
+
+  // Category stats
+  const cats = ['Burger','Pizza','Rice','Drinks'];
+  const catRevenue = {};
+  cats.forEach(c => catRevenue[c] = 0);
+  orders.forEach(o => {
+    (o.items || []).forEach(i => {
+      if (catRevenue[i.category] !== undefined) catRevenue[i.category] += i.price * i.qty;
+    });
+  });
+  const maxCat = Math.max(...Object.values(catRevenue), 1);
+  const catColors = { Burger: '#F97316', Pizza: '#EF4444', Rice: '#EAB308', Drinks: '#06B6D4' };
+  document.getElementById('categoryStats').innerHTML = cats.map(c => `
+    <div style="margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:6px;">
+        <span>${c}</span><strong>$${catRevenue[c].toFixed(2)}</strong>
+      </div>
+      <div style="background:var(--border);height:8px;border-radius:50px;overflow:hidden;">
+        <div style="width:${(catRevenue[c]/maxCat*100).toFixed(0)}%;height:100%;background:${catColors[c]||'var(--amber)'};border-radius:50px;transition:width 1s ease;"></div>
+      </div>
+    </div>`).join('');
+
+  // Recent orders table
+  const statusColors = { Pending:'badge-amber', Preparing:'badge-blue', Completed:'badge-green', Cancelled:'badge-red' };
+  const recentOrders = orders.slice(0, 8);
+  document.getElementById('recentOrdersBody').innerHTML = recentOrders.length ? recentOrders.map(o => `
+    <tr>
+      <td><code style="font-size:0.8rem;color:var(--amber)">${o.id}</code></td>
+      <td><strong>${o.customer?.name || '—'}</strong></td>
+      <td>${(o.items||[]).length} item(s)</td>
+      <td><strong>$${(o.total||0).toFixed(2)}</strong></td>
+      <td><span class="badge ${statusColors[o.status]||'badge-amber'}">${o.status||'Pending'}</span></td>
+      <td style="color:var(--text-muted);font-size:0.85rem;">${new Date(o.date).toLocaleDateString()}</td>
+    </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">No orders yet. Share your menu link!</td></tr>';
+
+  // Simple bar chart (pure canvas)
+  function drawChart() {
+    const canvas = document.getElementById('salesChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.offsetWidth; const H = 200;
+    canvas.width = W; canvas.height = H;
+
+    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const vals = [145, 220, 180, 310, 270, 390, 260]; // demo data
+    const maxV = Math.max(...vals);
+    const barW = (W - 80) / days.length;
+    const padX = 40; const padY = 20; const plotH = H - padY * 2 - 30;
+
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
+    const textColor = isDark ? '#888' : '#999';
+
+    // Grid
+    for (let i = 0; i <= 4; i++) {
+      const y = padY + (plotH / 4) * i;
+      ctx.strokeStyle = gridColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(W - padX, y); ctx.stroke();
+      ctx.fillStyle = textColor; ctx.font = '10px DM Sans,sans-serif'; ctx.textAlign = 'right';
+      ctx.fillText('$' + Math.round(maxV * (4-i)/4), padX - 6, y + 4);
+    }
+
+    // Bars
+    days.forEach((day, i) => {
+      const bH = (vals[i] / maxV) * plotH;
+      const x = padX + i * barW + barW * 0.2;
+      const bWidth = barW * 0.6;
+      const y = padY + plotH - bH;
+
+      const grad = ctx.createLinearGradient(0, y, 0, y + bH);
+      grad.addColorStop(0, '#F4A92A');
+      grad.addColorStop(1, 'rgba(244,169,42,0.3)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.roundRect(x, y, bWidth, bH, [4, 4, 0, 0]);
+      ctx.fill();
+
+      ctx.fillStyle = textColor; ctx.textAlign = 'center'; ctx.font = '11px DM Sans,sans-serif';
+      ctx.fillText(day, x + bWidth/2, H - 6);
+    });
+  }
+
+  setTimeout(drawChart, 100);
+  window.addEventListener('resize', drawChart);
+</script>
+</body>
+</html>
